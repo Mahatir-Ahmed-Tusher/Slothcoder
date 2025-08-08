@@ -48,7 +48,7 @@ export function useChatHistory() {
       if (persistenceEnabled) {
         const error = new Error('Chat persistence is unavailable');
         logStore.logError('Chat persistence initialization failed', error);
-        toast.error('Chat persistence is unavailable');
+        // Removed toast error message to prevent showing it on page refresh
       }
 
       return;

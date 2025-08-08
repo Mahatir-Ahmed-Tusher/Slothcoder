@@ -119,7 +119,7 @@ export function useEditChatDescription({
 
       try {
         if (!db) {
-          toast.error('Chat persistence is not available');
+          // Removed toast error message to prevent showing it on page refresh
           return;
         }
 
