@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs } from '@remix-run/cloudflare';
+import { type ActionFunctionArgs } from '@remix-run/node';
 import { streamText } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
 import { generateText } from 'ai';
@@ -70,8 +70,8 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
-  // Cache the Cloudflare environment to avoid repeated lookups.
-  const cfEnv = context.cloudflare?.env as any;
+  // Cache the Vercel environment to avoid repeated lookups.
+  const env = context.env as any;
 
   if (streamOutput) {
     // Handle streaming output.
