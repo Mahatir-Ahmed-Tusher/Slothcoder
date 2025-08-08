@@ -1,11 +1,14 @@
 import { cloudflareDevProxyVitePlugin as remixCloudflareDevProxy, vitePlugin as remixVitePlugin } from '@remix-run/dev';
+import { vercelPreset } from '@vercel/remix/vite';
 import UnoCSS from 'unocss/vite';
 import { defineConfig, type ViteDevServer } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { optimizeCssModules } from 'vite-plugin-optimize-css-modules';
 import tsconfigPaths from 'vite-tsconfig-paths';
-
+import * as dotenv from 'dotenv';
 import { execSync } from 'child_process';
+
+dotenv.config();
 
 // Get git hash with fallback
 const getGitHash = () => {
@@ -16,19 +19,20 @@ const getGitHash = () => {
   }
 };
 
-
 export default defineConfig((config) => {
   return {
     define: {
       __COMMIT_HASH: JSON.stringify(getGitHash()),
       __APP_VERSION: JSON.stringify(process.env.npm_package_version),
+
+      // 'process.env': JSON.stringify(process.env)
     },
     build: {
       target: 'esnext',
     },
     plugins: [
       nodePolyfills({
-        include: ['path', 'buffer'],
+        include: ['path', 'buffer', 'process'],
       }),
       config.mode !== 'test' && remixCloudflareDevProxy(),
       remixVitePlugin({
@@ -36,15 +40,22 @@ export default defineConfig((config) => {
           v3_fetcherPersist: true,
           v3_relativeSplatPath: true,
           v3_throwAbortReason: true,
-          v3_lazyRouteDiscovery: true
+          v3_lazyRouteDiscovery: true,
         },
+        presets: [vercelPreset()],
       }),
       UnoCSS(),
       tsconfigPaths(),
       chrome129IssuePlugin(),
       config.mode === 'production' && optimizeCssModules({ apply: 'build' }),
     ],
-    envPrefix: ["VITE_","OPENAI_LIKE_API_BASE_URL", "OLLAMA_API_BASE_URL", "LMSTUDIO_API_BASE_URL","TOGETHER_API_BASE_URL"],
+    envPrefix: [
+      'VITE_',
+      'OPENAI_LIKE_API_BASE_URL',
+      'OLLAMA_API_BASE_URL',
+      'LMSTUDIO_API_BASE_URL',
+      'TOGETHER_API_BASE_URL',
+    ],
     css: {
       preprocessorOptions: {
         scss: {

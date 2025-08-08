@@ -20,8 +20,10 @@ import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
+import type { ModelInfo } from '~/lib/modules/llm/types';
 import { useSearchParams } from '@remix-run/react';
 import { createSampler } from '~/utils/sampler';
+import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -51,27 +53,17 @@ export function Chat() {
         />
       )}
       <ToastContainer
-        closeButton={({ closeToast }) => {
-          return (
-            <button className="Toastify__close-button" onClick={closeToast}>
-              <div className="i-ph:x text-lg" />
-            </button>
-          );
-        }}
+        closeButton={({ closeToast }) => (
+          <button className="Toastify__close-button" onClick={closeToast}>
+            <div className="i-ph:x text-lg" />
+          </button>
+        )}
         icon={({ type }) => {
-          /**
-           * @todo Handle more types if we need them. This may require extra color palettes.
-           */
-          switch (type) {
-            case 'success': {
-              return <div className="i-ph:check-bold text-bolt-elements-icon-success text-2xl" />;
-            }
-            case 'error': {
-              return <div className="i-ph:warning-circle-bold text-bolt-elements-icon-error text-2xl" />;
-            }
-          }
-
-          return undefined;
+          const icons = {
+            success: <div className="i-ph:check-bold text-bolt-elements-icon-success text-2xl" />,
+            error: <div className="i-ph:warning-circle-bold text-bolt-elements-icon-error text-2xl" />,
+          };
+          return icons[type as keyof typeof icons] || <div />;
         }}
         position="bottom-right"
         pauseOnFocusLoss
@@ -112,13 +104,20 @@ export const ChatImpl = memo(
     useShortcuts();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
-    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]); // Move here
-    const [imageDataList, setImageDataList] = useState<string[]>([]); // Move here
+    const [animationScope, animate] = useAnimate();
+    const recognitionRef = useRef<SpeechRecognition | null>(null); // Ref for SpeechRecognition
+
+    const [chatStarted, setChatStarted] = useState(() => {
+      chatStore.setKey('started', initialMessages.length > 0);
+      return initialMessages.length > 0;
+    });
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+    const [imageDataList, setImageDataList] = useState<string[]>([]);
     const [searchParams, setSearchParams] = useSearchParams();
+    const [fakeLoading, setFakeLoading] = useState(false);
     const files = useStore(workbenchStore.files);
     const actionAlert = useStore(workbenchStore.alert);
-    const { activeProviders, promptId } = useSettings();
+    const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
 
     const [model, setModel] = useState(() => {
       const savedModel = Cookies.get('selectedModel');
@@ -128,34 +127,35 @@ export const ChatImpl = memo(
       const savedProvider = Cookies.get('selectedProvider');
       return (PROVIDER_LIST.find((p) => p.name === savedProvider) || DEFAULT_PROVIDER) as ProviderInfo;
     });
+    const [apiKeys, setApiKeys] = useState<Record<string, string>>(
+      Cookies.get('apiKeys') ? JSON.parse(Cookies.get('apiKeys')!) : {},
+    );
+    const [modelList, setModelList] = useState<ModelInfo[]>([]);
+    const [isModelSettingsCollapsed, setIsModelSettingsCollapsed] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [transcript, setTranscript] = useState('');
+    const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
 
     const { showChat } = useStore(chatStore);
 
-    const [animationScope, animate] = useAnimate();
-
-    const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
-
-    const { messages, isLoading, input, handleInputChange, setInput, stop, append } = useChat({
+    const { messages, isLoading, input, handleInputChange, setInput, stop, append, setMessages, error } = useChat({
       api: '/api/chat',
       body: {
         apiKeys,
         files,
         promptId,
+        contextOptimization: contextOptimizationEnabled,
       },
       sendExtraMessageFields: true,
-      onError: (error) => {
-        logger.error('Request failed\n\n', error);
-        toast.error(
-          'There was an error processing your request: ' + (error.message ? error.message : 'No details were returned'),
-        );
+      onError: (e) => {
+        logger.error('Request failed\n\n', e, error);
+        toast.error('There was an error processing your request: ' + (e.message || 'No details were returned'));
       },
       onFinish: (message, response) => {
-        const usage = response.usage;
+        const usage = response?.usage;
 
         if (usage) {
           console.log('Token usage:', usage);
-
-          // You can now use the usage data as needed
         }
 
         logger.debug('Finished streaming');
@@ -163,21 +163,123 @@ export const ChatImpl = memo(
       initialMessages,
       initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+
+    useEffect(() => {
+      console.log(transcript);
+    }, [transcript]);
+
+    // Revised Speech Recognition useEffect
+    useEffect(() => {
+      if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+        console.log('Speech recognition setup'); // Debugging log
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognitionInstance = new SpeechRecognition();
+        recognitionInstance.continuous = true;
+        recognitionInstance.interimResults = true;
+
+        recognitionInstance.onresult = (event) => {
+          const newTranscript = Array.from(event.results)
+            .map((result) => result[0])
+            .map((result) => result.transcript)
+            .join('');
+          setTranscript(newTranscript);
+
+          if (handleInputChange) {
+            const syntheticEvent = { target: { value: newTranscript } } as React.ChangeEvent<HTMLTextAreaElement>;
+            handleInputChange(syntheticEvent);
+          }
+        };
+
+        recognitionInstance.onerror = (event) => {
+          console.error('Speech recognition error:', event.error);
+          setIsListening(false);
+        };
+
+        recognitionRef.current = recognitionInstance;
+
+        // Cleanup on unmount
+        return () => {
+          if (recognitionRef.current) {
+            recognitionRef.current.stop();
+            recognitionRef.current = null;
+          }
+        };
+      }
+
+      return undefined;
+    }, []); // Empty dependency array: runs once on mount
+
+    // Use recognitionRef for starting/stopping listening
+    const startListening = () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+        setIsListening(true);
+      }
+    };
+
+    const stopListening = () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+      }
+    };
+
+    useEffect(() => {
+      if (typeof window !== 'undefined') {
+        setIsModelLoading('all');
+        fetch('/api/models')
+          .then((response) => response.json())
+          .then((data) => {
+            const typedData = data as { modelList: ModelInfo[] };
+            setModelList(typedData.modelList);
+          })
+          .catch((error) => {
+            console.error('Error fetching model list:', error);
+          })
+          .finally(() => {
+            setIsModelLoading(undefined);
+          });
+      }
+    }, [activeProviders, provider]);
+
+    const onApiKeysChange = async (providerName: string, apiKey: string) => {
+      const newApiKeys = { ...apiKeys, [providerName]: apiKey };
+      setApiKeys(newApiKeys);
+      Cookies.set('apiKeys', JSON.stringify(newApiKeys));
+
+      setIsModelLoading(providerName);
+
+      let providerModels: ModelInfo[] = [];
+
+      try {
+        const response = await fetch(`/api/models/${encodeURIComponent(providerName)}`);
+        const data = await response.json();
+        providerModels = (data as { modelList: ModelInfo[] }).modelList;
+      } catch (error) {
+        console.error('Error loading dynamic models for:', providerName, error);
+      }
+
+      setModelList((prevModels) => {
+        const otherModels = prevModels.filter((model) => model.provider !== providerName);
+        return [...otherModels, ...providerModels];
+      });
+      setIsModelLoading(undefined);
+    };
+
     useEffect(() => {
       const prompt = searchParams.get('prompt');
-      console.log(prompt, searchParams, model, provider);
 
       if (prompt) {
         setSearchParams({});
-        runAnimation();
-        append({
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
-            },
-          ] as any, // Type assertion to bypass compiler check
+        runAnimation().then(() => {
+          const newMessage: Message = {
+            id: `${new Date().getTime()}`,
+            role: 'user',
+            content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+          };
+          setMessages([...messages, newMessage]);
+          append(newMessage);
         });
       }
     }, [model, provider, searchParams]);
@@ -186,10 +288,6 @@ export const ChatImpl = memo(
     const { parsedMessages, parseMessages } = useMessageParser();
 
     const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
-
-    useEffect(() => {
-      chatStore.setKey('started', initialMessages.length > 0);
-    }, []);
 
     useEffect(() => {
       processSampledMessages({
@@ -222,11 +320,10 @@ export const ChatImpl = memo(
         textarea.style.height = 'auto';
 
         const scrollHeight = textarea.scrollHeight;
-
         textarea.style.height = `${Math.min(scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
         textarea.style.overflowY = scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
       }
-    }, [input, textareaRef]);
+    }, [input]);
 
     const runAnimation = async () => {
       if (chatStarted) {
@@ -237,9 +334,7 @@ export const ChatImpl = memo(
         animate('#examples', { opacity: 0, display: 'none' }, { duration: 0.1 }),
         animate('#intro', { opacity: 0, flex: 1 }, { duration: 0.2, ease: cubicEasingFn }),
       ]);
-
       chatStore.setKey('started', true);
-
       setChatStarted(true);
     };
 
@@ -250,88 +345,89 @@ export const ChatImpl = memo(
         return;
       }
 
-      /**
-       * @note (delm) Usually saving files shouldn't take long but it may take longer if there
-       * many unsaved files. In that case we need to block user input and show an indicator
-       * of some kind so the user is aware that something is happening. But I consider the
-       * happy case to be no unsaved files and I would expect users to save their changes
-       * before they send another message.
-       */
+      console.log('sendMessage start, _input:', _input);
+
       await workbenchStore.saveAllFiles();
 
-      const fileModifications = workbenchStore.getFileModifcations();
-
-      chatStore.setKey('aborted', false);
-
-      runAnimation();
-
-      if (fileModifications !== undefined) {
-        /**
-         * If we have file modifications we append a new user message manually since we have to prefix
-         * the user input with the file modifications and we don't want the new user input to appear
-         * in the prompt. Using `append` is almost the same as `handleSubmit` except that we have to
-         * manually reset the input and we'd have to manually pass in file attachments. However, those
-         * aren't relevant here.
-         */
-        append({
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${_input}`,
-            },
-            ...imageDataList.map((imageData) => ({
-              type: 'image',
-              image: imageData,
-            })),
-          ] as any, // Type assertion to bypass compiler check
-        });
-
-        /**
-         * After sending a new message we reset all modifications since the model
-         * should now be aware of all the changes.
-         */
-        workbenchStore.resetAllFileModifications();
-      } else {
-        append({
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${_input}`,
-            },
-            ...imageDataList.map((imageData) => ({
-              type: 'image',
-              image: imageData,
-            })),
-          ] as any, // Type assertion to bypass compiler check
-        });
+      if (error != null) {
+        setMessages(messages.slice(0, -1));
       }
 
+      const fileModifications = workbenchStore.getFileModifcations();
+      chatStore.setKey('aborted', false);
+
+      const newMessage: Message = {
+        id: `${new Date().getTime()}`,
+        role: 'user',
+        content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${_input}`,
+      };
+
+      // Check if this message already exists in messages to prevent duplication
+      if (!messages.some((msg) => msg.content === newMessage.content && msg.role === newMessage.role)) {
+        await runAnimation();
+
+        setMessages([...messages, newMessage]);
+
+        if (autoSelectTemplate && !chatStarted) {
+          console.log('Entering autoSelectTemplate block');
+          setFakeLoading(true);
+
+          const { template, title } = await selectStarterTemplate({ message: _input, model, provider });
+
+          if (template !== 'blank') {
+            const temResp = await getTemplates(template, title).catch((e) => {
+              toast.warning(`Failed to import starter template: ${e.message}\n Continuing with blank template`);
+              return null;
+            });
+
+            if (temResp) {
+              const { assistantMessage, userMessage } = temResp;
+              setMessages([
+                { id: `${new Date().getTime()}`, role: 'user', content: _input },
+                { id: `${new Date().getTime()}`, role: 'assistant', content: assistantMessage },
+                {
+                  id: `${new Date().getTime()}`,
+                  role: 'user',
+                  content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}`,
+                  annotations: ['hidden'],
+                },
+              ]);
+              append({ role: 'user', content: '' });
+            } else {
+              append(newMessage);
+            }
+          } else {
+            append(newMessage);
+          }
+
+          setFakeLoading(false);
+        } else {
+          console.log('Appending message directly');
+          append(newMessage);
+
+          if (fileModifications) {
+            workbenchStore.resetAllFileModifications();
+          }
+        }
+      } else {
+        console.log('Message already exists, skipping duplication');
+      }
+
+      console.log('Resetting input and related states');
       setInput('');
       Cookies.remove(PROMPT_COOKIE_KEY);
-
-      // Add file cleanup here
       setUploadedFiles([]);
       setImageDataList([]);
-
       resetEnhancer();
-
       textareaRef.current?.blur();
+
+      console.log('sendMessage complete');
     };
 
-    /**
-     * Handles the change event for the textarea and updates the input state.
-     * @param event - The change event from the textarea.
-     */
     const onTextareaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       handleInputChange(event);
     };
 
-    /**
-     * Debounced function to cache the prompt in cookies.
-     * Caches the trimmed value of the textarea input after a delay to optimize performance.
-     */
     const debouncedCachePrompt = useCallback(
       debounce((event: React.ChangeEvent<HTMLTextAreaElement>) => {
         const trimmedValue = event.target.value.trim();
@@ -341,14 +437,6 @@ export const ChatImpl = memo(
     );
 
     const [messageRef, scrollRef] = useSnapScroll();
-
-    useEffect(() => {
-      const storedApiKeys = Cookies.get('apiKeys');
-
-      if (storedApiKeys) {
-        setApiKeys(JSON.parse(storedApiKeys));
-      }
-    }, []);
 
     const handleModelChange = (newModel: string) => {
       setModel(newModel);
@@ -367,7 +455,7 @@ export const ChatImpl = memo(
         input={input}
         showChat={showChat}
         chatStarted={chatStarted}
-        isStreaming={isLoading}
+        isStreaming={isLoading || fakeLoading}
         enhancingPrompt={enhancingPrompt}
         promptEnhanced={promptEnhanced}
         sendMessage={sendMessage}
@@ -376,6 +464,17 @@ export const ChatImpl = memo(
         provider={provider}
         setProvider={handleProviderChange}
         providerList={activeProviders}
+        apiKeys={apiKeys}
+        modelList={modelList}
+        isModelSettingsCollapsed={isModelSettingsCollapsed}
+        setIsModelSettingsCollapsed={setIsModelSettingsCollapsed}
+        isListening={isListening}
+        startListening={startListening}
+        stopListening={stopListening}
+        transcript={transcript}
+        setTranscript={setTranscript}
+        isModelLoading={isModelLoading}
+        onApiKeysChange={onApiKeysChange}
         messageRef={messageRef}
         scrollRef={scrollRef}
         handleInputChange={(e) => {
@@ -391,10 +490,7 @@ export const ChatImpl = memo(
             return message;
           }
 
-          return {
-            ...message,
-            content: parsedMessages[i] || '',
-          };
+          return { ...message, content: parsedMessages[i] || '' };
         })}
         enhancePrompt={() => {
           enhancePrompt(

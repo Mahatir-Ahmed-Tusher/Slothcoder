@@ -6,20 +6,28 @@ interface FrameworkLinkProps {
   template: Template;
 }
 
-const FrameworkLink: React.FC<FrameworkLinkProps> = ({ template }) => (
-  <a
-    href={`/git?url=https://github.com/${template.githubRepo}.git`}
-    data-state="closed"
-    data-discover="true"
-    className="items-center justify-center "
-  >
-    <div
-      className={`inline-block ${template.icon} w-8 h-8 text-4xl transition-theme opacity-25 hover:opacity-75 transition-all`}
-    />
-  </a>
-);
+const FrameworkLink: React.FC<FrameworkLinkProps> = React.memo(({ template }) => {
+  console.log('FrameworkLink render start');
+  console.log('FrameworkLink render complete');
 
-const StarterTemplates: React.FC = () => {
+  return (
+    <a
+      href={`/git?url=https://github.com/${template.githubRepo}.git`}
+      data-state="closed"
+      data-discover="true"
+      className="items-center justify-center"
+    >
+      <div
+        className={`inline-block ${template.icon} w-8 h-8 text-4xl transition-theme opacity-25 hover:opacity-75 transition-all`}
+      />
+    </a>
+  );
+});
+
+const StarterTemplates: React.FC = React.memo(() => {
+  console.log('StarterTemplates render start');
+  console.log('StarterTemplates render complete');
+
   return (
     <div className="flex flex-col items-center gap-4">
       <span className="text-sm text-gray-500">or start a blank app with your favorite stack</span>
@@ -32,6 +40,6 @@ const StarterTemplates: React.FC = () => {
       </div>
     </div>
   );
-};
+});
 
 export default StarterTemplates;

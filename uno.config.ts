@@ -30,9 +30,17 @@ const BASE_COLORS = {
     500: '#737373',
     600: '#525252',
     700: '#404040',
+    750: '#333333', // Custom intermediate shade closer to 800
     800: '#262626',
+    850: '#1F1F1F', // Custom intermediate shade between 800 and 900
     900: '#171717',
     950: '#0A0A0A',
+  },
+  warmGray: {
+    50: '#F9FAFB', // Very light warm gray
+    100: '#F3F4F6', // Light warm gray
+    150: '#E5E7EB', // Custom warm gray (mid-tone, slightly warmer than gray.200)
+    200: '#D1D5DB', // Medium warm gray
   },
   accent: {
     50: '#F8F5FF',
@@ -94,13 +102,12 @@ const COLOR_PRIMITIVES = {
     gray: generateAlphaPalette(BASE_COLORS.gray[900]),
     red: generateAlphaPalette(BASE_COLORS.red[500]),
     accent: generateAlphaPalette(BASE_COLORS.accent[500]),
+    warmGray: generateAlphaPalette(BASE_COLORS.warmGray[200]), // Added for warmGray support
   },
 };
 
 export default defineConfig({
-  safelist: [
-    ...Object.keys(customIconCollection[collectionName]||{}).map(x=>`i-bolt:${x}`)    
-  ],
+  safelist: [...Object.keys(customIconCollection[collectionName] || {}).map((x) => `i-bolt:${x}`)],
   shortcuts: {
     'bolt-ease-cubic-bezier': 'ease-[cubic-bezier(0.4,0,0.2,1)]',
     'transition-theme': 'transition-[background-color,border-color,color] duration-150 bolt-ease-cubic-bezier',

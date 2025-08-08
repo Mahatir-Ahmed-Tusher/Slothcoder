@@ -1,0 +1,10 @@
+{
+  "buildCommand": "pnpm run build",
+  "framework": "remix",
+  "installCommand": "pnpm install",
+  "outputDirectory": "build/client",
+  "regions": ["iad1"],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
