@@ -21,17 +21,12 @@ import type { Theme } from '~/types/theme';
 import { classNames } from '~/utils/classNames';
 import { debounce } from '~/utils/debounce';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
-import { isFileLocked, getCurrentChatId } from '~/utils/fileLocks';
 import { BinaryContent } from './BinaryContent';
 import { getTheme, reconfigureTheme } from './cm-theme';
 import { indentKeyBinding } from './indent';
 import { getLanguage } from './languages';
-import { createEnvMaskingExtension } from './EnvMasking';
 
 const logger = createScopedLogger('CodeMirrorEditor');
-
-// Create a module-level reference to the current document for use in tooltip functions
-let currentDocRef: EditorDocument | undefined;
 
 export interface EditorDocument {
   value: string;
@@ -51,10 +46,8 @@ type TextEditorDocument = EditorDocument & {
 };
 
 export interface ScrollPosition {
-  top?: number;
-  left?: number;
-  line?: number;
-  column?: number;
+  top: number;
+  left: number;
 }
 
 export interface EditorUpdate {
@@ -141,9 +134,6 @@ export const CodeMirrorEditor = memo(
 
     const [languageCompartment] = useState(new Compartment());
 
-    // Add a compartment for the env masking extension
-    const [envMaskingCompartment] = useState(new Compartment());
-
     const containerRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView>();
     const themeRef = useRef<Theme>();
@@ -162,43 +152,8 @@ export const CodeMirrorEditor = memo(
       onChangeRef.current = onChange;
       onSaveRef.current = onSave;
       docRef.current = doc;
-
-      // Update the module-level reference for use in tooltip functions
-      currentDocRef = doc;
       themeRef.current = theme;
     });
-
-    useEffect(() => {
-      if (!viewRef.current || !doc || doc.isBinary) {
-        return;
-      }
-
-      if (typeof doc.scroll?.line === 'number') {
-        const line = doc.scroll.line;
-        const column = doc.scroll.column ?? 0;
-
-        try {
-          // Check if the line number is valid for the current document
-          const totalLines = viewRef.current.state.doc.lines;
-
-          // Only proceed if the line number is within the document's range
-          if (line < totalLines) {
-            const linePos = viewRef.current.state.doc.line(line + 1).from + column;
-            viewRef.current.dispatch({
-              selection: { anchor: linePos },
-              scrollIntoView: true,
-            });
-            viewRef.current.focus();
-          } else {
-            logger.warn(`Invalid line number ${line + 1} in ${totalLines}-line document`);
-          }
-        } catch (error) {
-          logger.error('Error scrolling to line:', error);
-        }
-      } else if (typeof doc.scroll?.top === 'number' || typeof doc.scroll?.left === 'number') {
-        viewRef.current.scrollDOM.scrollTo(doc.scroll.left ?? 0, doc.scroll.top ?? 0);
-      }
-    }, [doc?.scroll?.line, doc?.scroll?.column, doc?.scroll?.top, doc?.scroll?.left]);
 
     useEffect(() => {
       const onUpdate = debounce((update: EditorUpdate) => {
@@ -259,7 +214,6 @@ export const CodeMirrorEditor = memo(
       if (!doc) {
         const state = newEditorState('', theme, settings, onScrollRef, debounceScroll, onSaveRef, [
           languageCompartment.of([]),
-          envMaskingCompartment.of([]),
         ]);
 
         view.setState(state);
@@ -282,7 +236,6 @@ export const CodeMirrorEditor = memo(
       if (!state) {
         state = newEditorState(doc.value, theme, settings, onScrollRef, debounceScroll, onSaveRef, [
           languageCompartment.of([]),
-          envMaskingCompartment.of([createEnvMaskingExtension(() => docRef.current?.filePath)]),
         ]);
 
         editorStates.set(doc.filePath, state);
@@ -298,16 +251,6 @@ export const CodeMirrorEditor = memo(
         autoFocusOnDocumentChange,
         doc as TextEditorDocument,
       );
-
-      // Check if the file is locked and update the editor state accordingly
-      const currentChatId = getCurrentChatId();
-      const { locked } = isFileLocked(doc.filePath, currentChatId);
-
-      if (locked) {
-        view.dispatch({
-          effects: [editableStateEffect.of(false)],
-        });
-      }
     }, [doc?.value, editable, doc?.filePath, autoFocusOnDocumentChange]);
 
     return (
@@ -449,13 +392,8 @@ function setEditorDocument(
     });
   }
 
-  // Check if the file is locked
-  const currentChatId = getCurrentChatId();
-  const { locked } = isFileLocked(doc.filePath, currentChatId);
-
-  // Set editable state based on both the editable prop and the file's lock state
   view.dispatch({
-    effects: [editableStateEffect.of(editable && !doc.isBinary && !locked)],
+    effects: [editableStateEffect.of(editable && !doc.isBinary)],
   });
 
   getLanguage(doc.filePath).then((languageSupport) => {
@@ -473,36 +411,11 @@ function setEditorDocument(
       const newLeft = doc.scroll?.left ?? 0;
       const newTop = doc.scroll?.top ?? 0;
 
-      if (typeof doc.scroll?.line === 'number') {
-        const line = doc.scroll.line;
-        const column = doc.scroll.column ?? 0;
-
-        try {
-          // Check if the line number is valid for the current document
-          const totalLines = view.state.doc.lines;
-
-          // Only proceed if the line number is within the document's range
-          if (line < totalLines) {
-            const linePos = view.state.doc.line(line + 1).from + column;
-            view.dispatch({
-              selection: { anchor: linePos },
-              scrollIntoView: true,
-            });
-            view.focus();
-          } else {
-            logger.warn(`Invalid line number ${line + 1} in ${totalLines}-line document`);
-          }
-        } catch (error) {
-          logger.error('Error scrolling to line:', error);
-        }
-
-        return;
-      }
-
       const needsScrolling = currentLeft !== newLeft || currentTop !== newTop;
 
       if (autoFocus && editable) {
         if (needsScrolling) {
+          // we have to wait until the scroll position was changed before we can set the focus
           view.scrollDOM.addEventListener(
             'scroll',
             () => {
@@ -511,6 +424,7 @@ function setEditorDocument(
             { once: true },
           );
         } else {
+          // if the scroll position is still the same we can focus immediately
           view.focus();
         }
       }
@@ -523,20 +437,6 @@ function setEditorDocument(
 function getReadOnlyTooltip(state: EditorState) {
   if (!state.readOnly) {
     return [];
-  }
-
-  // Get the current document from the module-level reference
-  const currentDoc = currentDocRef;
-  let tooltipMessage = 'Cannot edit file while AI response is being generated';
-
-  // If we have a current document, check if it's locked
-  if (currentDoc?.filePath) {
-    const currentChatId = getCurrentChatId();
-    const { locked } = isFileLocked(currentDoc.filePath, currentChatId);
-
-    if (locked) {
-      tooltipMessage = 'This file is locked and cannot be edited';
-    }
   }
 
   return state.selection.ranges
@@ -552,7 +452,7 @@ function getReadOnlyTooltip(state: EditorState) {
         create: () => {
           const divElement = document.createElement('div');
           divElement.className = 'cm-readonly-tooltip';
-          divElement.textContent = tooltipMessage;
+          divElement.textContent = 'Cannot edit file while AI response is being generated';
 
           return { dom: divElement };
         },

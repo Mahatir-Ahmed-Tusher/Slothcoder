@@ -3,10 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import {
   chatId as chatIdStore,
-  db,
   description as descriptionStore,
-  getMessages,
+  db,
   updateChatDescription,
+  getMessages,
 } from '~/lib/persistence';
 
 interface EditChatDescriptionOptions {

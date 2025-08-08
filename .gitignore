@@ -11,6 +11,7 @@ dist
 dist-ssr
 *.local
 
+.history
 .vscode/*
 .vscode/launch.json
 !.vscode/extensions.json
@@ -25,7 +26,6 @@ dist-ssr
 /.history
 /.cache
 /build
-functions/build/
 .env.local
 .env
 .dev.vars
@@ -41,8 +41,3 @@ site
 
 # commit file ignore
 app/commit.json
-changelogUI.md
-docs/instructions/Roadmap.md
-.cursorrules
-*.md
-.qodo

@@ -1,13 +1,6 @@
 import type { Message } from 'ai';
 import { createScopedLogger } from '~/utils/logger';
 import type { ChatHistoryItem } from './useChatHistory';
-import type { Snapshot } from './types'; // Import Snapshot type
-
-export interface IChatMetadata {
-  gitUrl: string;
-  gitBranch?: string;
-  netlifySiteId?: string;
-}
 
 const logger = createScopedLogger('ChatHistory');
 
@@ -19,24 +12,15 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
   }
 
   return new Promise((resolve) => {
-    const request = indexedDB.open('boltHistory', 2);
+    const request = indexedDB.open('boltHistory', 1);
 
     request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      const oldVersion = event.oldVersion;
 
-      if (oldVersion < 1) {
-        if (!db.objectStoreNames.contains('chats')) {
-          const store = db.createObjectStore('chats', { keyPath: 'id' });
-          store.createIndex('id', 'id', { unique: true });
-          store.createIndex('urlId', 'urlId', { unique: true });
-        }
-      }
-
-      if (oldVersion < 2) {
-        if (!db.objectStoreNames.contains('snapshots')) {
-          db.createObjectStore('snapshots', { keyPath: 'chatId' });
-        }
+      if (!db.objectStoreNames.contains('chats')) {
+        const store = db.createObjectStore('chats', { keyPath: 'id' });
+        store.createIndex('id', 'id', { unique: true });
+        store.createIndex('urlId', 'urlId', { unique: true });
       }
     };
 
@@ -69,7 +53,6 @@ export async function setMessages(
   urlId?: string,
   description?: string,
   timestamp?: string,
-  metadata?: IChatMetadata,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('chats', 'readwrite');
@@ -86,7 +69,6 @@ export async function setMessages(
       urlId,
       description,
       timestamp: timestamp ?? new Date().toISOString(),
-      metadata,
     });
 
     request.onsuccess = () => resolve();
@@ -123,46 +105,12 @@ export async function getMessagesById(db: IDBDatabase, id: string): Promise<Chat
 
 export async function deleteById(db: IDBDatabase, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['chats', 'snapshots'], 'readwrite'); // Add snapshots store to transaction
-    const chatStore = transaction.objectStore('chats');
-    const snapshotStore = transaction.objectStore('snapshots');
+    const transaction = db.transaction('chats', 'readwrite');
+    const store = transaction.objectStore('chats');
+    const request = store.delete(id);
 
-    const deleteChatRequest = chatStore.delete(id);
-    const deleteSnapshotRequest = snapshotStore.delete(id); // Also delete snapshot
-
-    let chatDeleted = false;
-    let snapshotDeleted = false;
-
-    const checkCompletion = () => {
-      if (chatDeleted && snapshotDeleted) {
-        resolve(undefined);
-      }
-    };
-
-    deleteChatRequest.onsuccess = () => {
-      chatDeleted = true;
-      checkCompletion();
-    };
-    deleteChatRequest.onerror = () => reject(deleteChatRequest.error);
-
-    deleteSnapshotRequest.onsuccess = () => {
-      snapshotDeleted = true;
-      checkCompletion();
-    };
-
-    deleteSnapshotRequest.onerror = (event) => {
-      if ((event.target as IDBRequest).error?.name === 'NotFoundError') {
-        snapshotDeleted = true;
-        checkCompletion();
-      } else {
-        reject(deleteSnapshotRequest.error);
-      }
-    };
-
-    transaction.oncomplete = () => {
-      // This might resolve before checkCompletion if one operation finishes much faster
-    };
-    transaction.onerror = () => reject(transaction.error);
+    request.onsuccess = () => resolve(undefined);
+    request.onerror = () => reject(request.error);
   });
 }
 
@@ -256,7 +204,6 @@ export async function createChatFromMessages(
   db: IDBDatabase,
   description: string,
   messages: Message[],
-  metadata?: IChatMetadata,
 ): Promise<string> {
   const newId = await getNextId(db);
   const newUrlId = await getUrlId(db, newId); // Get a new urlId for the duplicated chat
@@ -267,8 +214,6 @@ export async function createChatFromMessages(
     messages,
     newUrlId, // Use the new urlId
     description,
-    undefined, // Use the current timestamp
-    metadata,
   );
 
   return newUrlId; // Return the urlId instead of id for navigation
@@ -285,59 +230,5 @@ export async function updateChatDescription(db: IDBDatabase, id: string, descrip
     throw new Error('Description cannot be empty');
   }
 
-  await setMessages(db, id, chat.messages, chat.urlId, description, chat.timestamp, chat.metadata);
-}
-
-export async function updateChatMetadata(
-  db: IDBDatabase,
-  id: string,
-  metadata: IChatMetadata | undefined,
-): Promise<void> {
-  const chat = await getMessages(db, id);
-
-  if (!chat) {
-    throw new Error('Chat not found');
-  }
-
-  await setMessages(db, id, chat.messages, chat.urlId, chat.description, chat.timestamp, metadata);
-}
-
-export async function getSnapshot(db: IDBDatabase, chatId: string): Promise<Snapshot | undefined> {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('snapshots', 'readonly');
-    const store = transaction.objectStore('snapshots');
-    const request = store.get(chatId);
-
-    request.onsuccess = () => resolve(request.result?.snapshot as Snapshot | undefined);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-export async function setSnapshot(db: IDBDatabase, chatId: string, snapshot: Snapshot): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('snapshots', 'readwrite');
-    const store = transaction.objectStore('snapshots');
-    const request = store.put({ chatId, snapshot });
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
-}
-
-export async function deleteSnapshot(db: IDBDatabase, chatId: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('snapshots', 'readwrite');
-    const store = transaction.objectStore('snapshots');
-    const request = store.delete(chatId);
-
-    request.onsuccess = () => resolve();
-
-    request.onerror = (event) => {
-      if ((event.target as IDBRequest).error?.name === 'NotFoundError') {
-        resolve();
-      } else {
-        reject(request.error);
-      }
-    };
-  });
+  await setMessages(db, id, chat.messages, chat.urlId, description, chat.timestamp);
 }

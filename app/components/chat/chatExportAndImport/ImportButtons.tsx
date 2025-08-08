@@ -1,13 +1,6 @@
 import type { Message } from 'ai';
 import { toast } from 'react-toastify';
 import { ImportFolderButton } from '~/components/chat/ImportFolderButton';
-import { Button } from '~/components/ui/Button';
-import { classNames } from '~/utils/classNames';
-
-type ChatData = {
-  messages?: Message[]; // Standard Bolt format
-  description?: string; // Optional description
-};
 
 export function ImportButtons(importChat: ((description: string, messages: Message[]) => Promise<void>) | undefined) {
   return (
@@ -27,17 +20,14 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
               reader.onload = async (e) => {
                 try {
                   const content = e.target?.result as string;
-                  const data = JSON.parse(content) as ChatData;
+                  const data = JSON.parse(content);
 
-                  // Standard format
-                  if (Array.isArray(data.messages)) {
-                    await importChat(data.description || 'Imported Chat', data.messages);
-                    toast.success('Chat imported successfully');
-
-                    return;
+                  if (!Array.isArray(data.messages)) {
+                    toast.error('Invalid chat file format');
                   }
 
-                  toast.error('Invalid chat file format');
+                  await importChat(data.description, data.messages);
+                  toast.success('Chat imported successfully');
                 } catch (error: unknown) {
                   if (error instanceof Error) {
                     toast.error('Failed to parse chat file: ' + error.message);
@@ -59,35 +49,19 @@ export function ImportButtons(importChat: ((description: string, messages: Messa
       />
       <div className="flex flex-col items-center gap-4 max-w-2xl text-center">
         <div className="flex gap-2">
-          <Button
+          <button
             onClick={() => {
               const input = document.getElementById('chat-import');
               input?.click();
             }}
-            variant="default"
-            size="lg"
-            className={classNames(
-              'gap-2 bg-bolt-elements-background-depth-1',
-              'text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-background-depth-2',
-              'border border-bolt-elements-borderColor',
-              'h-10 px-4 py-2 min-w-[120px] justify-center',
-              'transition-all duration-200 ease-in-out',
-            )}
+            className="px-4 py-2 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 transition-all flex items-center gap-2"
           >
-            <span className="i-ph:upload-simple w-4 h-4" />
+            <div className="i-ph:upload-simple" />
             Import Chat
-          </Button>
+          </button>
           <ImportFolderButton
             importChat={importChat}
-            className={classNames(
-              'gap-2 bg-bolt-elements-background-depth-1',
-              'text-bolt-elements-textPrimary',
-              'hover:bg-bolt-elements-background-depth-2',
-              'border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]',
-              'h-10 px-4 py-2 min-w-[120px] justify-center',
-              'transition-all duration-200 ease-in-out rounded-lg',
-            )}
+            className="px-4 py-2 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 transition-all flex items-center gap-2"
           />
         </div>
       </div>

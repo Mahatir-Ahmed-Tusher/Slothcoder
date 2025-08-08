@@ -1,7 +1,4 @@
-export type DebugLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'none';
-import { Chalk } from 'chalk';
-
-const chalk = new Chalk({ level: 3 });
+export type DebugLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
 type LoggerFunction = (...messages: any[]) => void;
 
@@ -14,7 +11,10 @@ interface Logger {
   setLevel: (level: DebugLevel) => void;
 }
 
-let currentLevel: DebugLevel = import.meta.env.VITE_LOG_LEVEL || (import.meta.env.DEV ? 'debug' : 'info');
+let currentLevel: DebugLevel = (import.meta.env.VITE_LOG_LEVEL ?? import.meta.env.DEV) ? 'debug' : 'info';
+
+const isWorker = 'HTMLRewriter' in globalThis;
+const supportsColor = !isWorker;
 
 export const logger: Logger = {
   trace: (...messages: any[]) => log('trace', undefined, messages),
@@ -45,14 +45,9 @@ function setLevel(level: DebugLevel) {
 }
 
 function log(level: DebugLevel, scope: string | undefined, messages: any[]) {
-  const levelOrder: DebugLevel[] = ['trace', 'debug', 'info', 'warn', 'error', 'none'];
+  const levelOrder: DebugLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
 
   if (levelOrder.indexOf(level) < levelOrder.indexOf(currentLevel)) {
-    return;
-  }
-
-  // If current level is 'none', don't log anything
-  if (currentLevel === 'none') {
     return;
   }
 
@@ -68,8 +63,14 @@ function log(level: DebugLevel, scope: string | undefined, messages: any[]) {
     return `${acc} ${current}`;
   }, '');
 
+  if (!supportsColor) {
+    console.log(`[${level.toUpperCase()}]`, allMessages);
+
+    return;
+  }
+
   const labelBackgroundColor = getColorForLevel(level);
-  const labelTextColor = level === 'warn' ? '#000000' : '#FFFFFF';
+  const labelTextColor = level === 'warn' ? 'black' : 'white';
 
   const labelStyles = getLabelStyles(labelBackgroundColor, labelTextColor);
   const scopeStyles = getLabelStyles('#77828D', 'white');
@@ -80,21 +81,7 @@ function log(level: DebugLevel, scope: string | undefined, messages: any[]) {
     styles.push('', scopeStyles);
   }
 
-  let labelText = formatText(` ${level.toUpperCase()} `, labelTextColor, labelBackgroundColor);
-
-  if (scope) {
-    labelText = `${labelText} ${formatText(` ${scope} `, '#FFFFFF', '77828D')}`;
-  }
-
-  if (typeof window !== 'undefined') {
-    console.log(`%c${level.toUpperCase()}${scope ? `%c %c${scope}` : ''}`, ...styles, allMessages);
-  } else {
-    console.log(`${labelText}`, allMessages);
-  }
-}
-
-function formatText(text: string, color: string, bg: string) {
-  return chalk.bgHex(bg)(chalk.hex(color)(text));
+  console.log(`%c${level.toUpperCase()}${scope ? `%c %c${scope}` : ''}`, ...styles, allMessages);
 }
 
 function getLabelStyles(color: string, textColor: string) {
@@ -117,7 +104,7 @@ function getColorForLevel(level: DebugLevel): string {
       return '#EE4744';
     }
     default: {
-      return '#000000';
+      return 'black';
     }
   }
 }

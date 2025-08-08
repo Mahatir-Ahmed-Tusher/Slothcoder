@@ -10,7 +10,6 @@ const logger = createScopedLogger('Terminal');
 
 export interface TerminalRef {
   reloadStyles: () => void;
-  getTerminal: () => XTerm | undefined;
 }
 
 export interface TerminalProps {
@@ -80,9 +79,6 @@ export const Terminal = memo(
           reloadStyles: () => {
             const terminal = terminalRef.current!;
             terminal.options.theme = getTerminalTheme(readonly ? { cursor: '#00000000' } : {});
-          },
-          getTerminal: () => {
-            return terminalRef.current;
           },
         };
       }, []);
