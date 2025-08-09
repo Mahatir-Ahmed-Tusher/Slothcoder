@@ -2,7 +2,6 @@ import { RemixBrowser } from '@remix-run/react';
 import { startTransition, StrictMode, Fragment } from 'react';
 import clientPkg from 'react-dom/client';
 const { hydrateRoot } = clientPkg;
-
 const container = document.getElementById('root');
 
 // Use StrictMode only in development to avoid double renders in production.
