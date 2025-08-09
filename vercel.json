@@ -1,13 +1,8 @@
 {
-  "buildCommand": "pnpm run build",
   "framework": "remix",
+  "buildCommand": "pnpm run vercel-build",
   "installCommand": "pnpm install",
-  "outputDirectory": "build/client",
   "regions": ["iad1"],
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
-  ],
-
   "headers": [
     {
       "source": "/(.*)",
