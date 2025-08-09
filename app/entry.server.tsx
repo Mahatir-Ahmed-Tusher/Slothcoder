@@ -1,8 +1,7 @@
-import type { AppLoadContext } from '@remix-run/node';
+import type { AppLoadContext } from '@remix-run/cloudflare';
 import { RemixServer } from '@remix-run/react';
 import { isbot } from 'isbot';
-import pkg from 'react-dom/server';
-const { renderToReadableStream } = pkg;
+import * as ReactDOMServer from 'react-dom/server';
 import { renderHeadToString } from 'remix-island';
 import { Head } from './root';
 import { themeStore } from '~/lib/stores/theme';
@@ -14,64 +13,71 @@ export default async function handleRequest(
   remixContext: any,
   _loadContext: AppLoadContext,
 ) {
-  // Render the application to a stream.
-  const readable = await renderToReadableStream(<RemixServer context={remixContext} url={request.url} />, {
-    signal: request.signal,
-    onError(error: unknown) {
-      console.error(error);
-      responseStatusCode = 500;
+  // await initializeModelList({});
+
+  // Use renderToString for reliable server-side rendering
+  const html = ReactDOMServer.renderToString(<RemixServer context={remixContext} url={request.url} />);
+  const readable = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(html));
+      controller.close();
     },
   });
 
-  // Precompute head markup and cache static header/footer portions.
-  const headMarkup = renderHeadToString({ request, remixContext, Head });
-  // Use default theme for SSR to avoid client-side hydration mismatches
-  const serverTheme = 'light'; // Default theme for server-side rendering
-  const staticHeader = `<!DOCTYPE html><html lang="en" data-theme="${serverTheme}"><head>${headMarkup}</head><body><div id="root" class="w-full h-full">`;
-  const staticFooter = '</div></body></html>';
-  const encoder = new TextEncoder();
-
   const body = new ReadableStream({
-    async start(controller) {
-      // Enqueue static header.
-      controller.enqueue(encoder.encode(staticHeader));
+    start(controller) {
+      const head = renderHeadToString({ request, remixContext, Head });
 
-      // Stream the rendered content.
+      controller.enqueue(
+        new Uint8Array(
+          new TextEncoder().encode(
+            `<!DOCTYPE html><html lang="en" data-theme="${themeStore.value}"><head>${head}</head><body><div id="root" class="w-full h-full">`,
+          ),
+        ),
+      );
+
       const reader = readable.getReader();
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
+      function read() {
+        reader
+          .read()
+          .then(({ done, value }) => {
+            if (done) {
+              controller.enqueue(new Uint8Array(new TextEncoder().encode('</div></body></html>')));
+              controller.close();
 
-          if (done) {
-            break;
-          }
+              return;
+            }
 
-          controller.enqueue(value);
-        }
-      } catch (error) {
-        console.error(error);
-        controller.error(error);
-        readable.cancel();
-
-        return;
+            controller.enqueue(value);
+            read();
+          })
+          .catch((error) => {
+            controller.error(error);
+            readable.cancel();
+          });
       }
-
-      // Enqueue static footer and close the stream.
-      controller.enqueue(encoder.encode(staticFooter));
-      controller.close();
+      read();
     },
+
     cancel() {
       readable.cancel();
     },
   });
 
-  // If the request comes from a bot, wait for the stream to be ready.
+  /*
+   * Since we're using renderToString, the content is already complete
+   * No need to wait for stream readiness
+   */
   if (isbot(request.headers.get('user-agent') || '')) {
-    await readable.allReady;
+    /*
+     * For bots, we can add any additional waiting logic here if needed
+     * But with renderToString, the content is immediately available
+     */
   }
 
   responseHeaders.set('Content-Type', 'text/html');
+
   responseHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
   responseHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
 

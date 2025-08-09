@@ -10,7 +10,7 @@ export function Header() {
 
   return (
     <header
-      className={classNames('flex items-center p-5 border-b h-[var(--header-height)]', {
+      className={classNames('flex items-center px-4 border-b h-[var(--header-height)]', {
         'border-transparent': !chat.started,
         'border-bolt-elements-borderColor': chat.started,
       })}
@@ -18,7 +18,9 @@ export function Header() {
       <div className="flex items-center gap-2 z-logo text-bolt-elements-textPrimary cursor-pointer">
         <div className="i-ph:sidebar-simple-duotone text-xl" />
         <a href="/" className="text-2xl font-semibold text-accent flex items-center">
-          <img src="/zimbolt_logo_blue_red_bolt.png" alt="Zimbolt Logo" className="w-[140px] inline-block" />
+          {/* <span className="i-bolt:logo-text?mask w-[46px] inline-block" /> */}
+          <img src="/logo-light-styled.png" alt="logo" className="w-[90px] inline-block dark:hidden" />
+          <img src="/logo-dark-styled.png" alt="logo" className="w-[90px] inline-block hidden dark:block" />
         </a>
       </div>
       {chat.started && ( // Display ChatDescription and HeaderActionButtons only when the chat has started.
@@ -28,8 +30,8 @@ export function Header() {
           </span>
           <ClientOnly>
             {() => (
-              <div className="mr-1">
-                <HeaderActionButtons />
+              <div className="">
+                <HeaderActionButtons chatStarted={chat.started} />
               </div>
             )}
           </ClientOnly>

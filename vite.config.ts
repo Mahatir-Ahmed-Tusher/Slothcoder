@@ -1,40 +1,68 @@
-import { cloudflareDevProxyVitePlugin as remixCloudflareDevProxy, vitePlugin as remixVitePlugin } from '@remix-run/dev';
-import { vercelPreset } from '@vercel/remix/vite';
+import { vitePlugin as remixVitePlugin } from '@remix-run/dev';
 import UnoCSS from 'unocss/vite';
 import { defineConfig, type ViteDevServer } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { optimizeCssModules } from 'vite-plugin-optimize-css-modules';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import * as dotenv from 'dotenv';
-import { execSync } from 'child_process';
 
 dotenv.config();
-
-// Get git hash with fallback
-const getGitHash = () => {
-  try {
-    return execSync('git rev-parse --short HEAD').toString().trim();
-  } catch {
-    return 'no-git-info';
-  }
-};
 
 export default defineConfig((config) => {
   return {
     define: {
-      __COMMIT_HASH: JSON.stringify(getGitHash()),
-      __APP_VERSION: JSON.stringify(process.env.npm_package_version),
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
 
-      // 'process.env': JSON.stringify(process.env)
+      // Expose API key environment variables to client-side code
+      'import.meta.env.OPENAI_API_KEY': JSON.stringify(process.env.OPENAI_API_KEY),
+      'import.meta.env.ANTHROPIC_API_KEY': JSON.stringify(process.env.ANTHROPIC_API_KEY),
+      'import.meta.env.GOOGLE_GENERATIVE_AI_API_KEY': JSON.stringify(process.env.GOOGLE_GENERATIVE_AI_API_KEY),
+      'import.meta.env.COHERE_API_KEY': JSON.stringify(process.env.COHERE_API_KEY),
+      'import.meta.env.MISTRAL_API_KEY': JSON.stringify(process.env.MISTRAL_API_KEY),
+      'import.meta.env.GROQ_API_KEY': JSON.stringify(process.env.GROQ_API_KEY),
+      'import.meta.env.PERPLEXITY_API_KEY': JSON.stringify(process.env.PERPLEXITY_API_KEY),
+      'import.meta.env.XAI_API_KEY': JSON.stringify(process.env.XAI_API_KEY),
+      'import.meta.env.OPEN_ROUTER_API_KEY': JSON.stringify(process.env.OPEN_ROUTER_API_KEY),
+      'import.meta.env.HuggingFace_API_KEY': JSON.stringify(process.env.HuggingFace_API_KEY),
+      'import.meta.env.HYPERBOLIC_API_KEY': JSON.stringify(process.env.HYPERBOLIC_API_KEY),
+      'import.meta.env.GITHUB_API_KEY': JSON.stringify(process.env.GITHUB_API_KEY),
+      'import.meta.env.DEEPSEEK_API_KEY': JSON.stringify(process.env.DEEPSEEK_API_KEY),
+      'import.meta.env.AWS_BEDROCK_CONFIG': JSON.stringify(process.env.AWS_BEDROCK_CONFIG),
+      'import.meta.env.TOGETHER_API_KEY': JSON.stringify(process.env.TOGETHER_API_KEY),
+      'import.meta.env.OPENAI_LIKE_API_KEY': JSON.stringify(process.env.OPENAI_LIKE_API_KEY),
+      'import.meta.env.OPENAI_LIKE_API_BASE_URL': JSON.stringify(process.env.OPENAI_LIKE_API_BASE_URL),
+      'import.meta.env.OLLAMA_API_BASE_URL': JSON.stringify(process.env.OLLAMA_API_BASE_URL),
+      'import.meta.env.LMSTUDIO_API_BASE_URL': JSON.stringify(process.env.LMSTUDIO_API_BASE_URL),
+      'import.meta.env.TOGETHER_API_BASE_URL': JSON.stringify(process.env.TOGETHER_API_BASE_URL),
     },
     build: {
       target: 'esnext',
     },
     plugins: [
       nodePolyfills({
-        include: ['path', 'buffer', 'process'],
+        include: ['buffer', 'process', 'util', 'stream'],
+        globals: {
+          Buffer: true,
+          process: true,
+          global: true,
+        },
+        protocolImports: true,
+        exclude: ['child_process', 'fs', 'path'],
       }),
-      config.mode !== 'test' && remixCloudflareDevProxy(),
+      {
+        name: 'buffer-polyfill',
+        transform(code, id) {
+          if (id.includes('env.mjs')) {
+            return {
+              code: `import { Buffer } from 'buffer';\n${code}`,
+              map: null,
+            };
+          }
+
+          return null;
+        },
+      },
+
       remixVitePlugin({
         future: {
           v3_fetcherPersist: true,
@@ -42,7 +70,6 @@ export default defineConfig((config) => {
           v3_throwAbortReason: true,
           v3_lazyRouteDiscovery: true,
         },
-        presets: [vercelPreset()],
       }),
       UnoCSS(),
       tsconfigPaths(),
@@ -51,6 +78,22 @@ export default defineConfig((config) => {
     ],
     envPrefix: [
       'VITE_',
+      'OPENAI_API_KEY',
+      'ANTHROPIC_API_KEY',
+      'GOOGLE_GENERATIVE_AI_API_KEY',
+      'COHERE_API_KEY',
+      'MISTRAL_API_KEY',
+      'GROQ_API_KEY',
+      'PERPLEXITY_API_KEY',
+      'XAI_API_KEY',
+      'OPEN_ROUTER_API_KEY',
+      'HuggingFace_API_KEY',
+      'HYPERBOLIC_API_KEY',
+      'GITHUB_API_KEY',
+      'DEEPSEEK_API_KEY',
+      'AWS_BEDROCK_CONFIG',
+      'TOGETHER_API_KEY',
+      'OPENAI_LIKE_API_KEY',
       'OPENAI_LIKE_API_BASE_URL',
       'OLLAMA_API_BASE_URL',
       'LMSTUDIO_API_BASE_URL',

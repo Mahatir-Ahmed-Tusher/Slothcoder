@@ -11,6 +11,16 @@ export type ContextAnnotation =
 
 export type ProgressAnnotation = {
   type: 'progress';
-  value: number;
+  label: string;
+  status: 'in-progress' | 'complete';
+  order: number;
   message: string;
+};
+
+export type ToolCallAnnotation = {
+  type: 'toolCall';
+  toolCallId: string;
+  serverName: string;
+  toolName: string;
+  toolDescription: string;
 };

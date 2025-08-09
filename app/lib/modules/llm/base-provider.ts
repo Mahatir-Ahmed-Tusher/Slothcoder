@@ -17,53 +17,43 @@ export abstract class BaseProvider implements ProviderInfo {
   labelForGetApiKey?: string;
   icon?: string;
 
-  /**
-   * Returns the base URL and API key for the provider by checking, in order,
-   * provider settings (provider-specific), server environment, process environment,
-   * and the LLMManager environment.
-   */
   getProviderBaseUrlAndKey(options: {
     apiKeys?: Record<string, string>;
-    providerSettings?: Record<string, IProviderSetting>;
+    providerSettings?: IProviderSetting;
     serverEnv?: Record<string, string>;
     defaultBaseUrlKey: string;
     defaultApiTokenKey: string;
-  }): { baseUrl?: string; apiKey?: string } {
+  }) {
     const { apiKeys, providerSettings, serverEnv, defaultBaseUrlKey, defaultApiTokenKey } = options;
+    let settingsBaseUrl = providerSettings?.baseUrl;
+    const manager = LLMManager.getInstance(serverEnv as any);
 
-    // Get provider-specific base URL if available.
-    const settingsBaseUrl = providerSettings ? providerSettings[this.name]?.baseUrl : undefined;
-
-    const manager = LLMManager.getInstance();
-    const { env } = manager;
+    if (settingsBaseUrl && settingsBaseUrl.length == 0) {
+      settingsBaseUrl = undefined;
+    }
 
     const baseUrlKey = this.config.baseUrlKey || defaultBaseUrlKey;
-    let baseUrl =
-      settingsBaseUrl ||
-      serverEnv?.[baseUrlKey] ||
-      process.env?.[baseUrlKey] ||
-      env?.[baseUrlKey] ||
-      this.config.baseUrl;
+    let baseUrl = settingsBaseUrl || serverEnv?.[baseUrlKey] || manager.env?.[baseUrlKey] || this.config.baseUrl;
 
     if (baseUrl && baseUrl.endsWith('/')) {
       baseUrl = baseUrl.slice(0, -1);
     }
 
     const apiTokenKey = this.config.apiTokenKey || defaultApiTokenKey;
-    const apiKey = apiKeys?.[this.name] || serverEnv?.[apiTokenKey] || process.env?.[apiTokenKey] || env?.[apiTokenKey];
+    const apiKey = apiKeys?.[this.name] || serverEnv?.[apiTokenKey] || manager.env?.[apiTokenKey];
 
-    return { baseUrl, apiKey };
+    return {
+      baseUrl,
+      apiKey,
+    };
   }
-
-  /**
-   * Retrieves cached dynamic models if the current cache key matches the generated key.
-   */
   getModelsFromCache(options: {
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
     serverEnv?: Record<string, string>;
   }): ModelInfo[] | null {
     if (!this.cachedDynamicModels) {
+      // console.log('no dynamic models',this.name);
       return null;
     }
 
@@ -71,31 +61,24 @@ export abstract class BaseProvider implements ProviderInfo {
     const generatedCacheKey = this.getDynamicModelsCacheKey(options);
 
     if (cacheKey !== generatedCacheKey) {
+      // console.log('cache key mismatch',this.name,cacheKey,generatedCacheKey);
       this.cachedDynamicModels = undefined;
       return null;
     }
 
     return this.cachedDynamicModels.models;
   }
-
-  /**
-   * Generates a cache key based on the provider-specific API key, settings, and server environment.
-   */
   getDynamicModelsCacheKey(options: {
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
     serverEnv?: Record<string, string>;
-  }): string {
+  }) {
     return JSON.stringify({
       apiKeys: options.apiKeys?.[this.name],
-      providerSettings: options.providerSettings ? options.providerSettings[this.name] : undefined,
+      providerSettings: options.providerSettings?.[this.name],
       serverEnv: options.serverEnv,
     });
   }
-
-  /**
-   * Caches dynamic models along with a cache key derived from the current options.
-   */
   storeDynamicModels(
     options: {
       apiKeys?: Record<string, string>;
@@ -103,21 +86,23 @@ export abstract class BaseProvider implements ProviderInfo {
       serverEnv?: Record<string, string>;
     },
     models: ModelInfo[],
-  ): void {
+  ) {
     const cacheId = this.getDynamicModelsCacheKey(options);
-    this.cachedDynamicModels = { cacheId, models };
+
+    // console.log('caching dynamic models',this.name,cacheId);
+    this.cachedDynamicModels = {
+      cacheId,
+      models,
+    };
   }
 
-  // Optional method to retrieve dynamic models.
+  // Declare the optional getDynamicModels method
   getDynamicModels?(
     apiKeys?: Record<string, string>,
     settings?: IProviderSetting,
     serverEnv?: Record<string, string>,
   ): Promise<ModelInfo[]>;
 
-  /**
-   * Abstract method to return a language model instance for the given model name.
-   */
   abstract getModelInstance(options: {
     model: string;
     serverEnv?: Env;
@@ -128,10 +113,11 @@ export abstract class BaseProvider implements ProviderInfo {
 
 type OptionalApiKey = string | undefined;
 
-/**
- * Utility function to create and return an OpenAI-like language model instance.
- */
 export function getOpenAILikeModel(baseURL: string, apiKey: OptionalApiKey, model: string) {
-  const openai = createOpenAI({ baseURL, apiKey });
+  const openai = createOpenAI({
+    baseURL,
+    apiKey,
+  });
+
   return openai(model);
 }

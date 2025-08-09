@@ -1,11 +1,14 @@
 import { useStore } from '@nanostores/react';
-import type { LinksFunction } from '@remix-run/node';
+import type { LinksFunction } from '@remix-run/cloudflare';
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from '@remix-run/react';
 import tailwindReset from '@unocss/reset/tailwind-compat.css?url';
 import { themeStore } from './lib/stores/theme';
 import { stripIndents } from './utils/stripIndent';
 import { createHead } from 'remix-island';
 import { useEffect } from 'react';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { ClientOnly } from 'remix-utils/client-only';
 
 import reactToastifyStyles from 'react-toastify/dist/ReactToastify.css?url';
 import globalStyles from './styles/index.scss?url';
@@ -14,18 +17,10 @@ import xtermStyles from '@xterm/xterm/css/xterm.css?url';
 import 'virtual:uno.css';
 
 export const links: LinksFunction = () => [
-  // Primary favicon (ICO format for universal browser support)
   {
     rel: 'icon',
-    href: '/zimbee_favicon.ico',
-    type: 'image/x-icon',
-  },
-
-  // PNG Favicon fallback for modern browsers
-  {
-    rel: 'icon',
-    href: '/zimbee_favicon.png',
-    type: 'image/png',
+    href: '/favicon.svg',
+    type: 'image/svg+xml',
   },
   { rel: 'stylesheet', href: reactToastifyStyles },
   { rel: 'stylesheet', href: tailwindReset },
@@ -47,38 +42,23 @@ export const links: LinksFunction = () => [
 ];
 
 const inlineThemeCode = stripIndents`
-  setZimboltTheme();
-  
-  function setZimboltTheme() {
-    let theme = localStorage.getItem('zimbolt_theme');
-    
+  setTutorialKitTheme();
+
+  function setTutorialKitTheme() {
+    let theme = localStorage.getItem('bolt_theme');
+
     if (!theme) {
       theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    
+
     document.querySelector('html')?.setAttribute('data-theme', theme);
   }
-
-  // Force favicon reload
-  function reloadFavicon() {
-    let favicon = document.querySelector("link[rel='icon']");
-    if (favicon) {
-      favicon.href = "/zimbee_favicon.ico" + "?v=" + Date.now();
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", reloadFavicon);
 `;
 
 export const Head = createHead(() => (
   <>
     <meta charSet="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Zimbolt ⚡ AI-Powered DeFi Developer</title>
-    <meta
-      name="description"
-      content="Zimbolt is the ultimate AI-powered DeFi development platform, integrated with ZimbeeCoin 🦝 and Zimbot 🤖. Build, automate, and deploy Web3 solutions with ease."
-    />
     <Meta />
     <Links />
     <script dangerouslySetInnerHTML={{ __html: inlineThemeCode }} />
@@ -94,7 +74,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {children}
+      <ClientOnly>{() => <DndProvider backend={HTML5Backend}>{children}</DndProvider>}</ClientOnly>
       <ScrollRestoration />
       <Scripts />
     </>
@@ -107,7 +87,7 @@ export default function App() {
   const theme = useStore(themeStore);
 
   useEffect(() => {
-    logStore.logSystem('🔹 Zimbolt Initialized', {
+    logStore.logSystem('Application initialized', {
       theme,
       platform: navigator.platform,
       userAgent: navigator.userAgent,
