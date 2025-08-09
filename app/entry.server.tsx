@@ -25,7 +25,9 @@ export default async function handleRequest(
 
   // Precompute head markup and cache static header/footer portions.
   const headMarkup = renderHeadToString({ request, remixContext, Head });
-  const staticHeader = `<!DOCTYPE html><html lang="en" data-theme="${themeStore.value}"><head>${headMarkup}</head><body><div id="root" class="w-full h-full">`;
+  // Use default theme for SSR to avoid client-side hydration mismatches
+  const serverTheme = 'light'; // Default theme for server-side rendering
+  const staticHeader = `<!DOCTYPE html><html lang="en" data-theme="${serverTheme}"><head>${headMarkup}</head><body><div id="root" class="w-full h-full">`;
   const staticFooter = '</div></body></html>';
   const encoder = new TextEncoder();
 
