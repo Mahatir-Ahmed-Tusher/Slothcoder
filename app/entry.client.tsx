@@ -1,6 +1,7 @@
 import { RemixBrowser } from '@remix-run/react';
 import { startTransition, StrictMode, Fragment } from 'react';
-import { hydrateRoot } from 'react-dom/client';
+import clientPkg from 'react-dom/client';
+const { hydrateRoot } = clientPkg;
 
 const container = document.getElementById('root');
 
