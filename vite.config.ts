@@ -37,17 +37,41 @@ export default defineConfig((config) => {
     },
     build: {
       target: 'esnext',
+      minify: 'terser',
+      rollupOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === 'MODULE_LEVEL_DIRECTIVE') {
+            return;
+          }
+          warn(warning);
+        },
+        output: {
+          manualChunks: (id) => {
+            if (id.includes('node_modules')) {
+              if (id.includes('@codemirror/')) {
+                return 'codemirror';
+              }
+              if (id.includes('@radix-ui/')) {
+                return 'ui';
+              }
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'vendor';
+              }
+            }
+          },
+        },
+      },
     },
     plugins: [
       nodePolyfills({
-        include: ['buffer', 'process', 'util', 'stream'],
+        include: ['buffer', 'process', 'util', 'stream', 'path'],
         globals: {
           Buffer: true,
           process: true,
           global: true,
         },
         protocolImports: true,
-        exclude: ['child_process', 'fs', 'path'],
+        exclude: ['child_process', 'fs'],
       }),
       {
         name: 'buffer-polyfill',
